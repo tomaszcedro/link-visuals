@@ -32,7 +32,6 @@
     overflow:hidden;
   }
 
-  /* Na wąskich ekranach pozwól stage zająć prawie całe okno */
   @media (max-width: 820px) {
     .stage{
       width:100vw;
@@ -41,7 +40,7 @@
       max-height:100vh;
       border-radius:0;
       padding:12px;
-      aspect-ratio:auto; /* mobile: dopasuj do ekranu */
+      aspect-ratio:auto;
     }
   }
 
@@ -55,6 +54,7 @@
     line-height:1.1;
   }
 
+  /* Board area */
   .boardWrap{
     flex:1;
     display:flex;
@@ -62,6 +62,14 @@
     justify-content:center;
     position:relative;
     min-height:0;
+  }
+
+  /* Mobile: center canvas vertically between header and controls */
+  .is-mobile .boardWrap{
+    display:grid;
+    grid-template-rows: 1fr auto 1fr;
+    align-items:center;
+    justify-items:center;
   }
 
   canvas{
@@ -72,7 +80,8 @@
     background-position:center;
     background-repeat:no-repeat;
     display:block;
-    touch-action:none; /* ważne dla mobilnych */
+    touch-action:none;
+    grid-row:2;
   }
 
   .hud{
@@ -87,13 +96,10 @@
     z-index:5;
   }
 
-  /* Mobile controls (pokazywane tylko gdy JS doda .is-mobile) */
+  /* Controls are under the boardWrap now */
   .controls{
     display:none;
-    position:absolute;
-    left:0; right:0;
-    bottom:0;
-    padding:12px;
+    padding:12px 0 0;
     gap:10px;
     z-index:10;
     pointer-events:auto;
@@ -147,25 +153,26 @@
 <body>
 <div class="stage" id="stage">
   <div class="header"><h1>LINK VISUALS</h1></div>
+
   <div class="hud" id="score">0</div>
 
   <div class="boardWrap">
     <canvas id="board"></canvas>
+  </div>
 
-    <!-- Mobile-only controls -->
-    <div class="controls" id="controls">
-      <div class="row">
-        <button class="btn small wide" id="btnAI" title="AI">AI</button>
-        <button class="btn small wide" id="btnR" title="Reset">R</button>
-      </div>
-      <div class="row">
-        <button class="btn" id="btnLeft">◀</button>
-        <button class="btn" id="btnRotate">⟳</button>
-        <button class="btn" id="btnRight">▶</button>
-      </div>
-      <div class="row">
-        <button class="btn wide" id="btnDown">▼</button>
-      </div>
+  <!-- Mobile-only controls (now below the boardWrap) -->
+  <div class="controls" id="controls">
+    <div class="row">
+      <button class="btn small wide" id="btnAI" title="AI">AI</button>
+      <button class="btn small wide" id="btnRes" title="Reset">Res</button>
+    </div>
+    <div class="row">
+      <button class="btn" id="btnLeft">◀</button>
+      <button class="btn" id="btnRotate">⟳</button>
+      <button class="btn" id="btnRight">▶</button>
+    </div>
+    <div class="row">
+      <button class="btn wide" id="btnDown">▼</button>
     </div>
   </div>
 </div>
@@ -223,7 +230,6 @@
   let downHeld = false;
   let fallProgress = 0;
 
-  // --- mobile detect & UI ---
   const isMobile =
     window.matchMedia?.("(pointer: coarse)").matches ||
     ("ontouchstart" in window) ||
@@ -231,16 +237,12 @@
 
   if (isMobile) stage.classList.add("is-mobile");
 
-  // --- sizing / hiDPI ---
   function resize(){
     const wrap = canvas.parentElement;
 
-    // Zostaw miejsce na przyciski na mobile (żeby nie zasłaniały planszy)
-    const controls = document.getElementById("controls");
-    const controlsH = (isMobile && controls) ? controls.getBoundingClientRect().height : 0;
-
+    // mobile controls are now below, so boardWrap has clean available height
     const availableW = wrap.clientWidth;
-    const availableH = wrap.clientHeight - controlsH;
+    const availableH = wrap.clientHeight;
 
     CELL = Math.max(12, Math.floor(Math.min(
       availableW / COLS,
@@ -322,11 +324,9 @@
 
     ctx.clearRect(0,0,w,h);
 
-    // darken background 70%
     ctx.fillStyle="rgba(0,0,0,0.70)";
     ctx.fillRect(0,0,w,h);
 
-    // locked blocks
     for(let y=0;y<ROWS;y++){
       for(let x=0;x<COLS;x++){
         if(grid[y][x]){
@@ -338,7 +338,6 @@
       }
     }
 
-    // current block (smooth)
     for(const [cx,cy] of SHAPES[current.type][current.rot]){
       const x = current.x + cx;
       const yFloat = current.y + cy + fallProgress;
@@ -351,7 +350,6 @@
     }
   }
 
-  // --- AI ---
   function cloneGrid(g){ return g.map(r=>r.slice()); }
   function place(g,p){
     const ng=cloneGrid(g);
@@ -359,13 +357,12 @@
       const x=p.x+cx,y=p.y+cy;
       if(y>=0&&y<ROWS&&x>=0&&x<COLS) ng[y][x]=p.type;
     }
-    let cl=0;
     for(let y=ROWS-1;y>=0;y--){
       if(ng[y].every(Boolean)){
-        ng.splice(y,1); ng.unshift(emptyRow()); cl++; y++;
+        ng.splice(y,1); ng.unshift(emptyRow()); y++;
       }
     }
-    return {ng,cl};
+    return ng;
   }
   function heights(g){
     return Array.from({length:COLS},(_,x)=>{
@@ -398,7 +395,7 @@
         const p={type:current.type,rot:r,x,y:0};
         if(collides(p)) continue;
         while(!collides(p,0,1)) p.y++;
-        const {ng}=place(grid,p);
+        const ng=place(grid,p);
         const h=heights(ng);
         const v=- holes(ng)*55 - sum(h)*4 - bump(h)*10;
         if(!best||v>best.v) best={targetX:x,targetRot:r,v};
@@ -438,7 +435,6 @@
     btnAI.classList.toggle("on", aiEnabled);
   }
 
-  // --- Keyboard controls (desktop + też działa na mobile z klawiaturą) ---
   window.addEventListener("keydown",e=>{
     if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","i","r"].includes(e.key)) e.preventDefault();
 
@@ -456,20 +452,18 @@
     if(e.key==="ArrowDown") downHeld=false;
   });
 
-  // --- Mobile buttons ---
-  function holdButton(el, onTick, interval=55){
+  function holdButton(el, onTick, interval=70){
     let timer = null;
     const start = (ev) => {
       ev.preventDefault();
       if(timer) return;
-      onTick(); // szybka reakcja
+      onTick();
       timer = setInterval(onTick, interval);
     };
     const stop = (ev) => {
       if(ev) ev.preventDefault();
       if(timer){ clearInterval(timer); timer=null; }
     };
-
     el.addEventListener("pointerdown", start, {passive:false});
     el.addEventListener("pointerup", stop, {passive:false});
     el.addEventListener("pointercancel", stop, {passive:false});
@@ -484,20 +478,19 @@
     const btnRotate = document.getElementById("btnRotate");
     const btnDown = document.getElementById("btnDown");
     const btnAI = document.getElementById("btnAI");
-    const btnR = document.getElementById("btnR");
+    const btnRes = document.getElementById("btnRes");
 
-    // zapobiegaj scrollowi/zoomowi podczas gry
     document.addEventListener("touchmove", (e) => e.preventDefault(), {passive:false});
 
     holdButton(btnLeft, () => {
       if(aiEnabled) return;
       if(!collides(current,-1,0)) current.x--;
-    }, 70);
+    });
 
     holdButton(btnRight, () => {
       if(aiEnabled) return;
       if(!collides(current,1,0)) current.x++;
-    }, 70);
+    });
 
     btnRotate.addEventListener("pointerdown", (e) => {
       e.preventDefault();
@@ -505,19 +498,17 @@
       rotateKick();
     }, {passive:false});
 
-    // Soft drop while holding
     btnDown.addEventListener("pointerdown", (e) => { e.preventDefault(); if(aiEnabled) return; downHeld = true; }, {passive:false});
     btnDown.addEventListener("pointerup",   (e) => { e.preventDefault(); downHeld = false; }, {passive:false});
     btnDown.addEventListener("pointercancel",(e)=> { e.preventDefault(); downHeld = false; }, {passive:false});
     btnDown.addEventListener("pointerleave",(e)=> { e.preventDefault(); downHeld = false; }, {passive:false});
 
     btnAI.addEventListener("pointerdown", (e) => { e.preventDefault(); toggleAI(); }, {passive:false});
-    btnR.addEventListener("pointerdown", (e) => { e.preventDefault(); reset(); }, {passive:false});
+    btnRes.addEventListener("pointerdown", (e) => { e.preventDefault(); reset(); }, {passive:false});
 
     syncAIBtn();
   }
 
-  // --- game loop ---
   function step(t){
     if(lastTime===null) lastTime=t;
     const dt=t-lastTime; lastTime=t;
@@ -526,7 +517,6 @@
 
     const interval = (!aiEnabled && downHeld) ? softDrop : baseDrop;
 
-    // fix: no visual overshoot at floor
     if (collides(current, 0, 1)) {
       fallProgress = 0;
       dropTimer += dt;
@@ -548,13 +538,10 @@
     requestAnimationFrame(step);
   }
 
-  // start
   reset();
   bindMobileControls();
   resize();
   requestAnimationFrame(step);
-
-  // po załadowaniu layoutu (mobile controls mogą zmieniać wysokość)
   setTimeout(resize, 0);
 })();
 </script>
